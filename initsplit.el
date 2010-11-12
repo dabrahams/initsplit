@@ -171,10 +171,24 @@
 	  (forward-sexp)
 	  (forward-line))))))
 
+(defun initsplit-current-file-truename ()
+  (file-truename (buffer-file-name (current-buffer))))
+
+(defun initsplit-custom-file ()
+  (or custom-file user-init-file))
+
+(defun initsplit-in-file-p (file)
+  (string= (file-truename file) (initsplit-current-file-truename)))
+
+(defun initsplit-in-custom-file-p ()
+  (initsplit-in-file-p (initsplit-custom-file)))
+
+(defun initsplit-byte-compile-current ()
+  (byte-compile-file (initsplit-current-file-truename)))
+
 (defun initsplit-split-user-init-file ()
   (save-excursion
-    (if (string= (buffer-file-name (current-buffer))
-		 (or custom-file user-init-file))
+    (if (initsplit-in-custom-file-p)
 	(let (initsplit-modified-buffers)
 	  (initsplit-split-customizations)
 	  (initsplit-split-customizations t)
@@ -194,18 +208,13 @@
 (add-hook 'write-file-hooks 'initsplit-split-user-init-file t)
 
 (defun initsplit-byte-compile-files ()
-  (if (string= (file-truename (buffer-file-name (current-buffer)))
-	       (file-truename (or custom-file user-init-file)))
-      (byte-compile-file (file-truename
-			  (buffer-file-name (current-buffer))))
+  (if (initsplit-in-custom-file-p)
+      (initsplit-byte-compile-current)
     (let ((cal initsplit-customizations-alist))
       (while cal
 	(if (and (nth 2 (car cal))
-		 (string= (file-truename (nth 1 (car cal)))
-			  (file-truename
-			   (buffer-file-name (current-buffer)))))
-	    (byte-compile-file (file-truename
-				(buffer-file-name (current-buffer)))))
+		 (initsplit-in-file-p (nth 1 (car cal))))
+	    (initsplit-byte-compile-current))
 	(setq cal (cdr cal))))))
 
 ;;(add-hook 'after-save-hook 'initsplit-byte-compile-files t)
