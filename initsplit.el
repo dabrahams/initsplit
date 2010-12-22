@@ -55,7 +55,7 @@
 
 ;;; Code:
 
-(defconst initsplit-version "1.6"
+(defconst initsplit-version "1.7"
   "This version of initsplit.")
 
 (defgroup initsplit nil
@@ -77,99 +77,49 @@
 		(boolean :tag "Byte-compile")))
   :group 'initsplit)
 
-(defcustom initsplit-sort-customizations
-  (and (boundp 'emacs-major-version)
-       (= emacs-major-version 20))
-  "*If non-nil, sort the arguments to `custom-set-variables'."
-  :type 'boolean
-  :group 'initsplit)
-
 ;;; User Functions:
 
-(defun initsplit-narrow-to-custom (&optional faces)
-  (goto-char (point-min))
-  (let (pos)
-    (if (re-search-forward
-	 (format "^(custom-set-%s"
-		 (if faces "faces" "variables")) nil t)
-	(setq pos (match-beginning 0))
-      (goto-char (point-max))
-      (insert "\n")
-      (setq pos (point))
-      (insert (format "(custom-set-%s)"
-		      (if faces "faces" "variables"))) )
-    (goto-char pos))
-  (let ((beg (point)))
-    (forward-sexp)
-    (narrow-to-region beg (point)))
-  (goto-char (point-min))
-  (forward-line))
+(defadvice custom-save-all (around initsplit-custom-save-all)
+  ;; Store up the saved-value properties of all symbols
+  ;; and remember that we haven't saved them yet
+  (mapatoms 
+   (lambda (symbol) 
+     (if (put symbol 'initsplit-saved-value (get symbol 'saved-value))
+         (put symbol 'initsplit-unsaved-p t))))
 
-(defun initsplit-delete-customizations (&optional faces)
-  "Delete all of the customization entries in a buffer."
-  (save-restriction
-    (initsplit-narrow-to-custom faces)
-    (forward-char -1)
-    (while (not (looking-at ")"))
-      (let ((opoint (point)))
-	(forward-sexp)
-	(delete-region opoint (point))))))
+  (unwind-protect
 
-(defun initsplit-sort-customizations (&optional faces)
-  "Sort the customization entries in a buffer."
-  (save-restriction
-    (initsplit-narrow-to-custom faces)
-    (sort-subr
-     nil
-     (function
-      (lambda ()
-	(if (looking-at ")")
-	    (goto-char (point-max))
-	  (forward-char))))
-     (function
-      (lambda ()
-	(backward-up-list 1)
-	(forward-sexp)))
-     (function
-      (lambda ()
-	(re-search-forward "'(\\(\\S-+\\)")
-	(match-string 1))))))
+      (progn
+        ;; For each customization file, save appropriate symbols
+        (dolist (s initsplit-customizations-alist)
+          (let ((custom-file (cadr s)))
 
-(defvar initsplit-modified-buffers nil)
+            ;; as-yet-unsaved symbols that match the regexp
+            ;; get a saved-value property.  Others don't
+            (mapatoms 
+             (lambda (symbol)
+               (put symbol 'saved-value 
+                    (and (get symbol 'initsplit-unsaved-p)
+                         (string-match (car s) (symbol-name symbol))
+                         (progn (put symbol 'initsplit-unsaved-p nil)
+                                (get symbol 'initsplit-saved-value))))))
 
-(defun initsplit-split-customizations (&optional faces)
-  (save-restriction
-    (initsplit-narrow-to-custom faces)
-    (while (looking-at "^\\s-*\\(;;\\|'(\\(\\S-+\\)\\)")
-      (let ((var (match-string 2))
-	    (cal initsplit-customizations-alist)
-	    found)
-	(while (and var cal)
-	  (if (not (string-match (caar cal) var))
-	      (setq cal (cdr cal))
-	    (setq found t)
-	    (let ((opoint (point)))
-	      (forward-sexp)
-	      (kill-region opoint (point))
-	      (if (looking-at "^\\s-*)")
-		  (delete-indentation)
-		(delete-char 1)))
-	    (with-current-buffer
-		(find-file-noselect (nth 1 (car cal)))
-	      (unless (memq (current-buffer) initsplit-modified-buffers)
-		(setq initsplit-modified-buffers
-		      (cons (current-buffer) initsplit-modified-buffers))
-		(initsplit-delete-customizations)
-		(initsplit-delete-customizations t))
-	      (save-restriction
-		(initsplit-narrow-to-custom faces)
-		(forward-char -1)
-		(insert ?\n)
-		(yank)))
-	    (setq cal nil)))
-	(unless found
-	  (forward-sexp)
-	  (forward-line))))))
+            ad-do-it
+            ))
+
+        ;; One more time for any remaining unsaved symbols
+        (mapatoms 
+         (lambda (symbol)
+           (put symbol 'saved-value 
+                (and (get symbol 'initsplit-unsaved-p)
+                     (get symbol 'initsplit-saved-value)))))
+        ad-do-it)
+
+    ;; Cleanup; restore the saved-value properties
+    (mapatoms 
+     (lambda (symbol) 
+       (put symbol 'saved-value (get symbol 'initsplit-saved-value))
+       (put symbol 'initsplit-saved-value nil)))))
 
 (defun initsplit-current-file-truename ()
   (file-truename (buffer-file-name (current-buffer))))
@@ -185,27 +135,6 @@
 
 (defun initsplit-byte-compile-current ()
   (byte-compile-file (initsplit-current-file-truename)))
-
-(defun initsplit-split-user-init-file ()
-  (save-excursion
-    (if (initsplit-in-custom-file-p)
-	(let (initsplit-modified-buffers)
-	  (initsplit-split-customizations)
-	  (initsplit-split-customizations t)
-	  (while initsplit-modified-buffers
-	    (with-current-buffer (car initsplit-modified-buffers)
-	      (when initsplit-sort-customizations
-		(initsplit-sort-customizations)
-		(initsplit-sort-customizations t))
-	      (save-buffer))
-	    (setq initsplit-modified-buffers
-		  (cdr initsplit-modified-buffers)))
-	  (when initsplit-sort-customizations
-	    (initsplit-sort-customizations)
-	    (initsplit-sort-customizations t))))
-    nil))
-
-(add-hook 'write-file-hooks 'initsplit-split-user-init-file t)
 
 (defun initsplit-byte-compile-files ()
   (if (initsplit-in-custom-file-p)
