@@ -79,7 +79,9 @@
 
 ;;; User Functions:
 
-(defadvice custom-save-all (around initsplit-custom-save-all)
+(defadvice custom-save-all (around initsplit-custom-save-all activate compile preactivate)
+"Wrapper over custom-save-all that saves customizations into
+multiple files per initsplit-customizations-alist"
   ;; Store up the saved-value properties of all symbols
   ;; and remember that we haven't saved them yet
   (mapatoms 
@@ -89,31 +91,23 @@
 
   (unwind-protect
 
-      (progn
-        ;; For each customization file, save appropriate symbols
-        (dolist (s initsplit-customizations-alist)
-          (let ((custom-file (cadr s)))
+      ;; For each customization file, save appropriate symbols
+      (dolist (s (append initsplit-customizations-alist 
+                         `(("" ,(initsplit-custom-file)))))
+        (let ((custom-file (cadr s)))
 
-            ;; as-yet-unsaved symbols that match the regexp
-            ;; get a saved-value property.  Others don't
-            (mapatoms 
-             (lambda (symbol)
-               (put symbol 'saved-value 
-                    (and (get symbol 'initsplit-unsaved-p)
-                         (string-match (car s) (symbol-name symbol))
-                         (progn (put symbol 'initsplit-unsaved-p nil)
-                                (get symbol 'initsplit-saved-value))))))
+          ;; as-yet-unsaved symbols that match the regexp
+          ;; get a saved-value property.  Others don't
+          (mapatoms 
+           (lambda (symbol)
+             (put symbol 'saved-value 
+                  (and (get symbol 'initsplit-unsaved-p)
+                       (string-match (car s) (symbol-name symbol))
+                       (progn (put symbol 'initsplit-unsaved-p nil)
+                              (get symbol 'initsplit-saved-value))))))
 
-            ad-do-it
-            ))
-
-        ;; One more time for any remaining unsaved symbols
-        (mapatoms 
-         (lambda (symbol)
-           (put symbol 'saved-value 
-                (and (get symbol 'initsplit-unsaved-p)
-                     (get symbol 'initsplit-saved-value)))))
-        ad-do-it)
+          ad-do-it
+          ))
 
     ;; Cleanup; restore the saved-value properties
     (mapatoms 
