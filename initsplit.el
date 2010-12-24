@@ -56,14 +56,10 @@
 ;;; Code:
 
 (require 'cl)
-(require 'cus-edit)
+(require 'find-func)
 
 (defconst initsplit-version "1.7"
   "This version of initsplit.")
-
-(defconst initsplit-loaded-files-introduced "1.7"
-  "This version of initsplit where we introduced the recording of
-  which customization files were loaded.")
 
 (defgroup initsplit nil
   "Code to split customizations into different files."
@@ -77,86 +73,110 @@
   :group 'initsplit)
 
 (defcustom initsplit-customizations-alist nil
-  "*Alist of (REGEXP FILE BYTECOMP LOAD-STYLE)
+  "*Alist of (REGEXP FILE BYTECOMP PRE-LOAD)
 
-REGEXP determines which variables and faces will be written to FILE.
-BYTECOMP determines whether `initsplit-byte-compile-files' will
-         byte-compile or skip FILE.
-LOAD-STYLE determines how/when FILE will be loaded:
+Variables and faces matching REGEXP will be written to FILE.
 
-* `'eagerly': loaded by initsplit when it is loaded
+If BYTECOMP is nil, `initsplit-byte-compile-files' will
+not byte-compile FILE.
 
-* `'lazily': loaded by some other means (e.g. eval-after-load),
-  but before any customizations are written out to disk,
-  initsplit will load it automatically if it hasn't already been
-  loaded, to avoid losing settings.
-
-* `'manually': loaded by other means.  If it isn't /known/ to
-  have been loaded by the time customizations are written to
-  disk, its customizations will be backed up, and then *erased*.
-  Legacy customization files should be transitioned to eager or
-  lazy loading ASAP to avoid losing settings.
-"
+If PRE-LOAD is nil, initsplit will not try to ensure FILE is
+loaded at startup."
   :type '(repeat
 	  (list (regexp  :tag "Var regexp")
 		(file    :tag "Custom file")
 		(boolean :tag "Byte-compile")
-                (menu-choice :tag "Load this file:" 
-                             :value 'eager
-                             :notify (lambda (widget &rest ignore)
-                                       (message "%S" (widget-value widget))
-                                       (unless (widget-value widget)
-                                         (warn "Manual loading is only here to support legacy configurations and not recommended; please choose one of the other settings.
-`C-h v initsplit-customizations-alist RET' for more details
-")))
-                             (item :tag "eagerly" :value 'eager)
-                             (item :tag "lazily" :value 'lazy)
-                             (item :tag "manually (change me)" :value nil)
-                             )))
+		(boolean :tag "Pre-load" :value t)))
   :group 'initsplit)
+
+(defcustom initsplit-default-directory
+  (file-name-as-directory user-emacs-directory)
+  "The directory for writing new customization files and the
+first place initsplit will look when loading a customization file
+specified with a non-absolute path"
+  :group 'initsplit
+  :type 'directory)
+
+
+(defcustom initsplit-load-before-customizing 'ask
+  "Determines what is done with customization files from
+`initsplit-customizations-alist' that haven't yet been loaded."
+  :group 'initsplit
+  :type '(choice (const :tag "Never" nil)
+		 (const :tag "Always" t)
+		 (const :tag "Ask" ask)))
 
 ;;; User Functions:
 
-(defun initsplit-load-behavior (filespec)
-  "Return a list containing the load-behavior element of
-customization tuple FILESPEC, or nil if FILESPEC has no
-load-behavior set."
+;;; Helper Functions:
+
+(defun initsplit-filter (list pred)
+  "Return the subset of LIST that satisfies PRED"  
+  (reduce (lambda (elt lst) (if (funcall pred elt) (cons elt lst) lst))
+          list :from-end t :initial-value nil))
+
+(defun initsplit-customizations-subset (file-pred)
+  "Return the subset of `initsplit-customizations-alist' whose
+FILE element satisfies FILE-PRED"
+  (initsplit-filter initsplit-customizations-alist
+                    (lambda (s) (funcall file-pred (initsplit-filename s)))))
+
+(defun initsplit-preload-p (filespec)
+  "Return non-nil if the file given by filespec should be preloaded."
   (cadddr filespec))
 
+(defun initsplit-filename (filespec)
+  "Return the absolute path to the file associated with the
+`initsplit-customizations-alist' element FILESPEC"
+  (let* ((file (cadr filespec))
+         (default-directory initsplit-default-directory)
+         (load-path (cons default-directory load-path)))
+    (condition-case nil
+        (find-library-name file)
+        (error (file-truename file)))))
 
 ;;
-;; Keeping a record of already-loaded customization files
+;; Protection against overwriting valuable customizations
 ;;
-(defvar initsplit-loaded-files nil
-  "A list of known loaded customization files
+(defun initsplit-writable-p (file)
+  "Return non-nil iff the file named by FILE has been
+loaded or does not exist"
+  (or (not (file-exists-p file))
+      (load-history-filename-element (load-history-regexp file))))
 
-If a legacy customization file is loaded before initsplit, it won't
-appear in this list until it is loaded again.")
+(defun initsplit-writable-alist ()
+  "Return the subset of `initsplit-customizations-alist' that we
+can write safely (without lossage)"
+  (initsplit-customizations-subset 'initsplit-writable-p))
 
-(defun initsplit-loaded-files-customize ()
-  "Ensure the initialization form of `initsplit-loaded-files'
-gets immediately evaluated upon loading custom-file.  Called just
-before saving custom-file"
+(defun initsplit-non-writable-alist ()
+  "Return the subset of `initsplit-customizations-alist' that
+can't be safely written"
+  (set-difference 
+   initsplit-customizations-alist (initsplit-writable-alist)))
 
-  (put 'initsplit-loaded-files 'initsplit-unsaved-p t)
+(defun initsplit-pre-customize ()
+  "Give the user a chance to load not-yet-loaded customization files."
+    (map-y-or-n-p 
+     (lambda (f) (if (eq initsplit-load-before-customizing 'ask)
+                     (format "Load %S before customizing?
 
-  ;; Make initsplit-loaded-files look like a rogue customization.  When
-  ;; the customization is loaded, customize will *IMMEDIATELY* evaluate
-  ;; its customization expression, thereby recording that the
-  ;; customization file was loaded.  See the cus-edit library for more
-  ;; on rogue customizations.
-  (dolist
-      (p-val '((standard-value . nil)
-              (custom-autoload . nil)
-              (saved-value 
-               . ((let ((l (bound-and-true-p initsplit-loaded-files)))
-                    (add-to-list 'l (file-truename load-file-name)))))
-              (saved-variable-comment "This variable was customized by \
-initsplit. Do not try to tinker with it manually!")))
-    (put 'initsplit-loaded-files (car p-val) (cdr p-val))))
+Answer `y' if you'll be changing the \ settings stored there.
+You can suppress this message by customizing \
+`initsplit-load-before-customizing' or by setting the file to \
+pre-load \ in `initsplit-customizations-alist'
 
+" f f)
+                   initsplit-load-before-customizing)) 
+     'load
+     (mapcar 'initsplit-filename (initsplit-non-writable-alist))
+     '("customization file" "customization files" "load")))
+
+(add-hook 'Custom-mode-hook 'initsplit-pre-customize)
+
+(when nil
 ;;
-;; initsplit-written-by-version
+;; initsplit customization file versioning
 ;;
 (defun initsplit-written-by-version ()
   "Returns the version of initsplit that wrote customizations
@@ -165,86 +185,15 @@ into the current buffer, or `\"1.0\"' for versions predating 1.7"
 
 (put 'initsplit-written-by-version 'safe-local-variable 'stringp)
 
-;;
-;; Saving customizations
-;;
-(defun initsplit-back-up-legacy-file (f)
-  (let* ((backup-directory-alist nil)
-         (version-control t)
-         (backup (car (find-backup-file-name f))))
-
-    (warn "Backed up %S to %S.  If you choose not to load now, \
-you can compare these two files to be sure you haven't lost any \
-important settings." f backup)
-    (copy-file f backup))
-  t)
-
-(defun initsplit-load (file)
-  "Load FILE and remember that we did it."
-  (load file)
-  (add-to-list 'initsplit-loaded-files file))
-
-(defun initsplit-load-all ()
-  "Load any not-yet-loaded customization files to be sure their
-customizations won't be lost when they are written.  Return a
-list of newly-created buffers that can be killed after
-customizations are saved.
-
-\"Legacy\" customization files written prior to the introduction
-of init file load detection are either loaded or backed up, based
-on the user's interactive selection."
-  ;; Anyone using custom-file already has to load it explicitly,
-  ;; so nothing to worry about here.
-;  (add-to-list 'initsplit-loaded-files (file-truename (initsplit-custom-file)))
-
-  (let (buffers-to-kill legacy-files)
-
-    (condition-case err
-        (progn
-          (dolist (s initsplit-customizations-alist)
-            (let* ((f (file-truename (cadr s)))
-                   (buffer-existed (get-file-buffer f)))
-
-              (with-current-buffer (find-file-noselect f)
-                ;; mark the buffer for later cleanup
-                (unless buffer-existed
-                  (push (current-buffer) buffers-to-kill))
-
-                (when (and (file-exists-p f) 
-                           (not (member f initsplit-loaded-files)))
-                  
-                  (if (version< (initsplit-written-by-version) 
-                                initsplit-loaded-files-introduced)
-                      (push f legacy-files)
-                    (initsplit-load f))))))
-
-          (map-y-or-n-p "Warning: I can't tell whether legacy \
-customization file %S has been loaded yet!
-* If it hasn't, saving customizations may overwrite its settings.
-* On the other hand, it may not be safe to load it again
-
-[Once the file has been saved, I won't have to ask you this anymore]
-(Re-)Load it now? " 
-                        'initsplit-load legacy-files 
-                        '("customization file" "customization files" "load")
-                        `((?b initsplit-back-up-legacy-file 
-                              "make a backup instead of loading it"))))
-          
-      (error (mapc 'kill-buffer buffers-to-kill)
-             (signal (car err) (cdr err))))        ;; re-raise err
-
-    buffers-to-kill))
-
-;; Make sure customizations are loaded before doing any customization!
-(add-hook 'Custom-mode-hook 'initsplit-load-all)
-
 (defadvice custom-save-faces (after initsplit-write-version
                                     activate compile preactivate)
-
-  ;; Record the initsplit version in the file
   (add-file-local-variable-prop-line
    'initsplit-written-by-version initsplit-version))
+)
   
+;;
+;; Where the hard work is done
+;;
 (defadvice custom-save-all (around initsplit-custom-save-all 
                                    activate compile preactivate)
   "Wrapper over custom-save-all that saves customizations into
@@ -257,38 +206,30 @@ multiple files per initsplit-customizations-alist"
      (if (put symbol 'initsplit-saved-value (get symbol 'saved-value))
          (put symbol 'initsplit-unsaved-p t))))
 
-  (let ((buffers-to-kill (initsplit-load-all)))
-    (unwind-protect
+  (unwind-protect
 
-        ;; For each customization file, save appropriate symbols
-        (dolist (s (append initsplit-customizations-alist 
-                           `(("" ,(initsplit-custom-file)))))
-          (let ((custom-file (cadr s)))
+      ;; For each customization file, save appropriate symbols
+      (dolist (s (append initsplit-customizations-alist 
+                         `(("" ,(initsplit-custom-file)))))
+        (let ((custom-file (initsplit-filename s)))
 
-            ;; As-yet-unsaved symbols that match the regexp
-            ;; get a saved-value property.  Others get nil.
-            (mapatoms 
-             (lambda (symbol)
-               (put symbol 'saved-value 
-                    (and (get symbol 'initsplit-unsaved-p)
-                         (string-match (car s) (symbol-name symbol))
-                         (progn (put symbol 'initsplit-unsaved-p nil)
-                                (get symbol 'initsplit-saved-value))))))
+          ;; As-yet-unsaved symbols that match the regexp
+          ;; get a saved-value property.  Others get nil.
+          (mapatoms 
+           (lambda (symbol)
+             (put symbol 'saved-value 
+                  (and (get symbol 'initsplit-unsaved-p)
+                       (string-match (car s) (symbol-name symbol))
+                       (progn (put symbol 'initsplit-unsaved-p nil)
+                              (get symbol 'initsplit-saved-value))))))
 
-            ;; Every file gets a special customization for this
-            ;; variable
-            (initsplit-loaded-files-customize)
+          ad-do-it))
 
-            ad-do-it))
-
-      ;; Cleanup: restore the saved-value properties
-      (mapatoms 
-       (lambda (symbol) 
-         (put symbol 'saved-value (get symbol 'initsplit-saved-value))
-         (put symbol 'initsplit-saved-value nil)))
-
-      ;; Cleanup: kill extra buffers
-      (mapc 'kill-buffer buffers-to-kill))))
+    ;; Cleanup: restore the saved-value properties
+    (mapatoms 
+     (lambda (symbol) 
+       (put symbol 'saved-value (get symbol 'initsplit-saved-value))
+       (put symbol 'initsplit-saved-value nil)))))
 
 (defun initsplit-current-file-truename ()
   (file-truename (buffer-file-name (current-buffer))))
@@ -315,7 +256,7 @@ multiple files per initsplit-customizations-alist"
 	    (initsplit-byte-compile-current))
 	(setq cal (cdr cal))))))
 
-;;(add-hook 'after-save-hook 'initsplit-byte-compile-files t)
+;; (add-hook 'after-save-hook 'initsplit-byte-compile-files t)
 
 ;;; Internal Functions:
 
@@ -323,16 +264,16 @@ multiple files per initsplit-customizations-alist"
   (concat (mapconcat 'regexp-quote (get-load-suffixes) "\\|") "\\'"))
 
 (defun initsplit-strip-lisp-suffix (path)
-  (replace-regexp-in-string elhome-load-suffix-regexp "" path))
+  (replace-regexp-in-string initsplit-load-suffix-regexp "" path))
 
 (provide 'initsplit)
 
-;; Load eagerly-loaded customization files that haven't been loaded
+;; Ensure customization files marked pre-load have been loaded
 ;; already.
-(dolist (s initsplit-customizations-alist)
-  (when (and (eq (initsplit-load-behavior s) 'eager)
-             (not (member (file-truename (cadr s)) initsplit-loaded-files)))
-      (initsplit-load (initsplit-strip-lisp-suffix (cadr s)))))
+(dolist (s (initsplit-non-writable-alist))
+  (when (and (initsplit-preload-p s)
+             (file-exists-p (initsplit-filename s)))
+    (load (initsplit-strip-lisp-suffix (cadr s)))))
   
 (run-hooks 'initsplit-load-hook)
 
