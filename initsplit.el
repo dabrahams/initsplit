@@ -56,6 +56,7 @@
 ;;; Code:
 
 (require 'cl)
+(require 'cus-edit)
 
 (defconst initsplit-version "1.7"
   "This version of initsplit.")
@@ -76,9 +77,12 @@
   :group 'initsplit)
 
 (defcustom initsplit-customizations-alist nil
-  "*An alist that describes how to split up init file customizations.
+  "*Alist of (REGEXP FILE BYTECOMP LOAD-STYLE)
 
-The \"Load\" selection determines when the file will be loaded.
+REGEXP determines which variables and faces will be written to FILE.
+BYTECOMP determines whether `initsplit-byte-compile-files' will
+         byte-compile or skip FILE.
+LOAD-STYLE determines how/when FILE will be loaded:
 
 * `'eagerly': loaded by initsplit when it is loaded
 
@@ -130,6 +134,10 @@ If a legacy customization file is loaded before initsplit, it won't
 appear in this list until it is loaded again.")
 
 (defun initsplit-loaded-files-customize ()
+  "Ensure the initialization form of `initsplit-loaded-files'
+gets immediately evaluated upon loading custom-file.  Called just
+before saving custom-file"
+
   (put 'initsplit-loaded-files 'initsplit-unsaved-p t)
 
   ;; Make initsplit-loaded-files look like a rogue customization.  When
@@ -165,47 +173,70 @@ into the current buffer, or `\"1.0\"' for versions predating 1.7"
          (version-control t)
          (backup (car (find-backup-file-name f))))
 
-    (warn "Legacy customization file %S may not have been loaded \
-before saving customizations.  If not, its customizations will be MOVED \
-to %S.  Please compare these two files to be sure you haven't lost any \
+    (warn "Backed up %S to %S.  If you choose not to load now, \
+you can compare these two files to be sure you haven't lost any \
 important settings." f backup)
-    (rename-file f backup)))
+    (copy-file f backup))
+  t)
 
-(defun initsplit-save-prepare ()
+(defun initsplit-load (file)
+  "Load FILE and remember that we did it."
+  (load file)
+  (add-to-list 'initsplit-loaded-files file))
+
+(defun initsplit-load-all ()
   "Load any not-yet-loaded customization files to be sure their
 customizations won't be lost when they are written.  Return a
 list of newly-created buffers that can be killed after
 customizations are saved.
 
-Legacy customization files written prior to the introduction of
-init file load detection are not loaded, since we have no way of
-knowing whether it's safe to load them twice.  Instead, back them
-up and issue a warning."
-  (let (buffers-to-kill)
+\"Legacy\" customization files written prior to the introduction
+of init file load detection are either loaded or backed up, based
+on the user's interactive selection."
+  ;; Anyone using custom-file already has to load it explicitly,
+  ;; so nothing to worry about here.
+;  (add-to-list 'initsplit-loaded-files (file-truename (initsplit-custom-file)))
 
-    (dolist (s initsplit-customizations-alist)
-      (let* ((f (file-truename (cadr s)))
-             (buffer-existed (get-file-buffer f)))
+  (let (buffers-to-kill legacy-files)
 
-        (condition-case err
-            (with-current-buffer (find-file-noselect f)
-              ;; mark the buffer for later cleanup
-              (unless buffer-existed
-                (push (current-buffer) buffers-to-kill))
+    (condition-case err
+        (progn
+          (dolist (s initsplit-customizations-alist)
+            (let* ((f (file-truename (cadr s)))
+                   (buffer-existed (get-file-buffer f)))
 
-              (when (and (file-exists-p f) 
-                         (not (member f initsplit-loaded-files)))
-                
-                (if (version< (initsplit-written-by-version) 
-                              initsplit-loaded-files-introduced)
-                    (initsplit-back-up-legacy-file f)
-                    (load f))))
+              (with-current-buffer (find-file-noselect f)
+                ;; mark the buffer for later cleanup
+                (unless buffer-existed
+                  (push (current-buffer) buffers-to-kill))
 
-          (error (mapc 'kill-buffer buffers-to-kill)
-                 ;; re-raise err
-                 (signal (car err) (cdr err))))))
+                (when (and (file-exists-p f) 
+                           (not (member f initsplit-loaded-files)))
+                  
+                  (if (version< (initsplit-written-by-version) 
+                                initsplit-loaded-files-introduced)
+                      (push f legacy-files)
+                    (initsplit-load f))))))
+
+          (map-y-or-n-p "Warning: I can't tell whether legacy \
+customization file %S has been loaded yet!
+* If it hasn't, saving customizations may overwrite its settings.
+* On the other hand, it may not be safe to load it again
+
+[Once the file has been saved, I won't have to ask you this anymore]
+(Re-)Load it now? " 
+                        'initsplit-load legacy-files 
+                        '("customization file" "customization files" "load")
+                        `((?b initsplit-back-up-legacy-file 
+                              "make a backup instead of loading it"))))
+          
+      (error (mapc 'kill-buffer buffers-to-kill)
+             (signal (car err) (cdr err))))        ;; re-raise err
 
     buffers-to-kill))
+
+;; Make sure customizations are loaded before doing any customization!
+(add-hook 'Custom-mode-hook 'initsplit-load-all)
 
 (defadvice custom-save-faces (after initsplit-write-version
                                     activate compile preactivate)
@@ -226,7 +257,7 @@ multiple files per initsplit-customizations-alist"
      (if (put symbol 'initsplit-saved-value (get symbol 'saved-value))
          (put symbol 'initsplit-unsaved-p t))))
 
-  (let ((buffers-to-kill (initsplit-save-prepare)))
+  (let ((buffers-to-kill (initsplit-load-all)))
     (unwind-protect
 
         ;; For each customization file, save appropriate symbols
@@ -301,7 +332,7 @@ multiple files per initsplit-customizations-alist"
 (dolist (s initsplit-customizations-alist)
   (when (and (eq (initsplit-load-behavior s) 'eager)
              (not (member (file-truename (cadr s)) initsplit-loaded-files)))
-      (load (initsplit-strip-lisp-suffix (cadr s)))))
+      (initsplit-load (initsplit-strip-lisp-suffix (cadr s)))))
   
 (run-hooks 'initsplit-load-hook)
 
