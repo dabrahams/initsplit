@@ -89,9 +89,18 @@ loaded at startup."
 		(boolean :tag "Pre-load" :value t)))
   :group 'initsplit)
 
+(defvar initsplit-dynamic-customizations-alist nil
+  "Alist that is appended to `initsplit-customizations-alist'
+when customizations are saved.  
+
+Used to programmatically add initsplit files that are not to be
+saved as part of the customization of
+`initsplit-customizations-alist' itself.  Note: Elements of
+`initsplit-customizations-alist' take precedence.")
+
 (defcustom initsplit-default-directory
   (file-name-as-directory user-emacs-directory)
-  "The directory for writing new customization files and the
+  "*The directory for writing new customization files and the
 first place initsplit will look when loading a customization file
 specified with a non-absolute path"
   :group 'initsplit
@@ -99,7 +108,7 @@ specified with a non-absolute path"
 
 
 (defcustom initsplit-load-before-customizing 'ask
-  "Determines what is done with customization files from
+  "*Determines what is done with customization files from
 `initsplit-customizations-alist' that haven't yet been loaded."
   :group 'initsplit
   :type '(choice (const :tag "Never" nil)
@@ -210,6 +219,7 @@ multiple files per initsplit-customizations-alist"
 
       ;; For each customization file, save appropriate symbols
       (dolist (s (append initsplit-customizations-alist 
+                         initsplit-dynamic-customizations-alist
                          `(("" ,(initsplit-custom-file)))))
         (let ((custom-file (initsplit-filename s)))
 
