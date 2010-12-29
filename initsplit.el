@@ -208,12 +208,14 @@ into the current buffer, or `\"1.0\"' for versions predating 1.7"
   "Wrapper over custom-save-all that saves customizations into
 multiple files per initsplit-customizations-alist"
 
-  ;; Store up the saved-value properties of all symbols
+  ;; Store up the saved-value/face properties of all symbols
   ;; and remember that we haven't saved them yet
   (mapatoms 
    (lambda (symbol) 
-     (if (put symbol 'initsplit-saved-value (get symbol 'saved-value))
-         (put symbol 'initsplit-unsaved-p t))))
+     (when (or
+            (put symbol 'initsplit-saved-value (get symbol 'saved-value))
+            (put symbol 'initsplit-saved-face (get symbol 'saved-face)))
+       (put symbol 'initsplit-unsaved-p t))))
 
   (unwind-protect
 
@@ -221,17 +223,21 @@ multiple files per initsplit-customizations-alist"
       (dolist (s (append initsplit-customizations-alist 
                          initsplit-dynamic-customizations-alist
                          `(("" ,(initsplit-custom-file)))))
+
         (let ((custom-file (initsplit-filename s)))
 
           ;; As-yet-unsaved symbols that match the regexp
-          ;; get a saved-value property.  Others get nil.
+          ;; get a saved-value/face property.  Others get nil.
           (mapatoms 
+
            (lambda (symbol)
-             (put symbol 'saved-value 
-                  (and (get symbol 'initsplit-unsaved-p)
-                       (string-match (car s) (symbol-name symbol))
-                       (progn (put symbol 'initsplit-unsaved-p nil)
-                              (get symbol 'initsplit-saved-value))))))
+             (if (and (get symbol 'initsplit-unsaved-p)
+                      (string-match (car s) (symbol-name symbol)))
+                 (progn
+                   (put symbol 'saved-value (get symbol 'initsplit-saved-value))
+                   (put symbol 'saved-face (get symbol 'initsplit-saved-face)))
+               (put symbol 'saved-value nil)
+               (put symbol 'saved-face nil))))
 
           ad-do-it))
 
@@ -239,7 +245,9 @@ multiple files per initsplit-customizations-alist"
     (mapatoms 
      (lambda (symbol) 
        (put symbol 'saved-value (get symbol 'initsplit-saved-value))
-       (put symbol 'initsplit-saved-value nil)))))
+       (put symbol 'saved-face (get symbol 'initsplit-saved-face))
+       (put symbol 'initsplit-saved-value nil)
+       (put symbol 'initsplit-saved-face nil)))))
 
 (defun initsplit-current-file-truename ()
   (file-truename (buffer-file-name (current-buffer))))
