@@ -1,8 +1,9 @@
 ;;; initsplit --- code to split customizations into different files
 
 ;; Copyright (C) 2000, 2001 John Wiegley
+;; Copyright (C) 2010       Dave Abrahams
 
-;; Author: John Wiegley <johnw@gnu.org>
+;; Author: John Wiegley <johnw@gnu.org>, Dave Abrahams <dave@boostpro.com>
 ;; Created:  8 Feb 2000
 ;; Version: 1.6
 ;; Keywords: lisp
