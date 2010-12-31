@@ -169,14 +169,10 @@ can't be safely written"
   "Give the user a chance to load not-yet-loaded customization files."
     (map-y-or-n-p 
      (lambda (f) (if (eq initsplit-load-before-customizing 'ask)
-                     (format "Load %S before customizing?
-
-Answer `y' if you'll be changing the \ settings stored there.
+                     (format "Load %S before customizing (answer `y' if you'll be changing the settings stored there)?
 You can suppress this message by customizing \
 `initsplit-load-before-customizing' or by setting the file to \
-pre-load \ in `initsplit-customizations-alist'
-
-" f f)
+pre-load in `initsplit-customizations-alist'" f f)
                    initsplit-load-before-customizing)) 
      'load
      (mapcar 'initsplit-filename (initsplit-non-writable-alist))
