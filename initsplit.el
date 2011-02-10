@@ -109,8 +109,8 @@ specified with a non-absolute path"
 
 
 (defcustom initsplit-load-before-customizing 'ask
-  "*Determines what is done with customization files from
-`initsplit-customizations-alist' that haven't yet been loaded."
+  "*Determines what is done with known customization files that
+haven't yet been loaded."
   :group 'initsplit
   :type '(choice (const :tag "Never" nil)
 		 (const :tag "Always" t)
@@ -125,10 +125,19 @@ specified with a non-absolute path"
   (reduce (lambda (elt lst) (if (funcall pred elt) (cons elt lst) lst))
           list :from-end t :initial-value nil))
 
+(defun initsplit-custom-alist ()
+  "Return an alist of (PATTERN, FILE) pairs containing all
+customization FILEs and the PATTERNs matching variable values
+they store, accounting for initsplit-customizations-alist,
+initsplit-dynamic-customizations-alist, and custom-file"
+  (append initsplit-customizations-alist 
+          initsplit-dynamic-customizations-alist
+          `(("" ,(initsplit-custom-file)))))
+
 (defun initsplit-customizations-subset (file-pred)
-  "Return the subset of `initsplit-customizations-alist' whose
+  "Return the subset of `(initsplit-custom-alist)' whose
 FILE element satisfies FILE-PRED"
-  (initsplit-filter initsplit-customizations-alist
+  (initsplit-filter (initsplit-custom-alist)
                     (lambda (s) (funcall file-pred (initsplit-filename s)))))
 
 (defun initsplit-preload-p (filespec)
@@ -137,7 +146,7 @@ FILE element satisfies FILE-PRED"
 
 (defun initsplit-filename (filespec)
   "Return the absolute path to the file associated with the
-`initsplit-customizations-alist' element FILESPEC"
+`(initsplit-custom-alist)' element FILESPEC"
   (let* ((file (cadr filespec))
          (default-directory initsplit-default-directory)
          (load-path (cons default-directory load-path)))
@@ -155,15 +164,15 @@ loaded or does not exist"
       (load-history-filename-element (load-history-regexp file))))
 
 (defun initsplit-writable-alist ()
-  "Return the subset of `initsplit-customizations-alist' that we
+  "Return the subset of `(initsplit-custom-alist)' that we
 can write safely (without lossage)"
   (initsplit-customizations-subset 'initsplit-writable-p))
 
 (defun initsplit-non-writable-alist ()
-  "Return the subset of `initsplit-customizations-alist' that
+  "Return the subset of `(initsplit-custom-alist)' that
 can't be safely written"
-  (set-difference 
-   initsplit-customizations-alist (initsplit-writable-alist)))
+  (set-difference
+   (initsplit-custom-alist) (initsplit-writable-alist) :test 'equal))
 
 (defun initsplit-pre-customize ()
   "Give the user a chance to load not-yet-loaded customization files."
@@ -172,7 +181,7 @@ can't be safely written"
                      (format "Load %S before customizing (answer `y' if you'll be changing the settings stored there)?
 You can suppress this message by customizing \
 `initsplit-load-before-customizing' or by setting the file to \
-pre-load in `initsplit-customizations-alist'" f f)
+pre-load in `initsplit-customizations-alist'" f)
                    initsplit-load-before-customizing)) 
      'load
      (mapcar 'initsplit-filename (initsplit-non-writable-alist))
@@ -203,7 +212,7 @@ into the current buffer, or `\"1.0\"' for versions predating 1.7"
 (defadvice custom-save-all (around initsplit-custom-save-all 
                                    activate compile preactivate)
   "Wrapper over custom-save-all that saves customizations into
-multiple files per initsplit-customizations-alist"
+multiple files per (initsplit-custom-alist)"
 
   ;; Store up the saved-value/face properties of all symbols
   ;; and remember that we haven't saved them yet
@@ -217,9 +226,7 @@ multiple files per initsplit-customizations-alist"
   (unwind-protect
 
       ;; For each customization file, save appropriate symbols
-      (dolist (s (append initsplit-customizations-alist 
-                         initsplit-dynamic-customizations-alist
-                         `(("" ,(initsplit-custom-file)))))
+      (dolist (s (initsplit-custom-alist))
 
         (let ((custom-file (initsplit-filename s)))
 
@@ -264,7 +271,7 @@ multiple files per initsplit-customizations-alist"
 (defun initsplit-byte-compile-files ()
   (if (initsplit-in-custom-file-p)
       (initsplit-byte-compile-current)
-    (let ((cal initsplit-customizations-alist))
+    (let ((cal (initsplit-custom-alist)))
       (while cal
 	(if (and (nth 2 (car cal))
 		 (initsplit-in-file-p (nth 1 (car cal))))
