@@ -2,6 +2,7 @@
 
 ;; Copyright (C) 2000, 2001 John Wiegley
 ;; Copyright (C) 2010       Dave Abrahams
+;; Copyright (C) 2011       Mat Marcus
 
 ;; Author: John Wiegley <johnw@gnu.org>, Dave Abrahams <dave@boostpro.com>
 ;; Created:  8 Feb 2000
@@ -239,7 +240,8 @@ multiple files per (initsplit-custom-alist)"
                       (string-match (car s) (symbol-name symbol)))
                  (progn
                    (put symbol 'saved-value (get symbol 'initsplit-saved-value))
-                   (put symbol 'saved-face (get symbol 'initsplit-saved-face)))
+                   (put symbol 'saved-face (get symbol 'initsplit-saved-face))
+                   (put symbol 'initsplit-unsaved-p nil))
                (put symbol 'saved-value nil)
                (put symbol 'saved-face nil))))
 
