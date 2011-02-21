@@ -222,30 +222,37 @@ multiple files per (initsplit-custom-alist)"
      (when (or
             (put symbol 'initsplit-saved-value (get symbol 'saved-value))
             (put symbol 'initsplit-saved-face (get symbol 'saved-face)))
-       (put symbol 'initsplit-unsaved-p t))))
+       (put symbol 'initsplit-saved-to nil))))
 
   (unwind-protect
 
       ;; For each customization file, save appropriate symbols
       (dolist (s (initsplit-custom-alist))
 
-        (let ((custom-file (initsplit-filename s)))
+        (let ((custom-file (file-truename (initsplit-filename s))))
 
           ;; As-yet-unsaved symbols that match the regexp
           ;; get a saved-value/face property.  Others get nil.
           (mapatoms 
 
            (lambda (symbol)
-             (if (and (get symbol 'initsplit-unsaved-p)
-                      (string-match (car s) (symbol-name symbol)))
-                 (progn
-                   (put symbol 'saved-value (get symbol 'initsplit-saved-value))
-                   (put symbol 'saved-face (get symbol 'initsplit-saved-face))
-                   (put symbol 'initsplit-unsaved-p nil))
-               (put symbol 'saved-value nil)
-               (put symbol 'saved-face nil))))
+             (let* ((saved-to (get symbol 'initsplit-saved-to))
 
-          ad-do-it))
+                    (save-here 
+                     (if (null saved-to)
+                         (string-match (car s) (symbol-name symbol))
+                       (string= custom-file saved-to))))
+
+               (if save-here
+                   (progn ; let custom have its way
+                     (put symbol 'saved-value (get symbol 'initsplit-saved-value))
+                     (put symbol 'saved-face (get symbol 'initsplit-saved-face))
+                     (put symbol 'initsplit-saved-to custom-file))
+                 ; else, let custom think it hasn't been changed.
+                 (put symbol 'saved-value nil)
+                 (put symbol 'saved-face nil)))))
+           
+           ad-do-it))
 
     ;; Cleanup: restore the saved-value properties
     (mapatoms 
