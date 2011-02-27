@@ -133,7 +133,7 @@ they store, accounting for initsplit-customizations-alist,
 initsplit-dynamic-customizations-alist, and custom-file"
   (append initsplit-customizations-alist 
           initsplit-dynamic-customizations-alist
-          `(("" ,(initsplit-custom-file)))))
+          (when (initsplit-custom-file) `(("" ,(initsplit-custom-file))))))
 
 (defun initsplit-customizations-subset (file-pred)
   "Return the subset of `(initsplit-custom-alist)' whose
