@@ -206,7 +206,35 @@ into the current buffer, or `\"1.0\"' for versions predating 1.7"
   (add-file-local-variable-prop-line
    'initsplit-written-by-version initsplit-version))
 )
-  
+;;
+;; Remove empty stanzas after writing.  It would be nicer to not write
+;; empty stanzas, but the current design of custom-save-variables and
+;; custom-save-faces doesn't really let us do that.
+;;
+(defun initsplit-remove-empty-stanza (symbol)
+  "Find the first call to symbol, and if there are no arguments
+in this call, delete the call.
+
+This is used to remove empty custom-set-* stanzas."
+  (save-excursion
+    (goto-char (point-min))
+    (search-forward (concat "(" (symbol-name symbol)))
+    (goto-char (match-beginning 0))
+    (let ((start (point))
+          (sexp (read (current-buffer))))
+      (when (= 1 (length sexp))
+          (custom-save-delete symbol)))))
+
+(defadvice custom-save-variables (after no-empty-stanzas
+                                        activate compile preactivate)
+  "Delete empty customization stanzas for variables."
+  (initsplit-remove-empty-stanza 'custom-set-variables))
+
+(defadvice custom-save-faces (after no-empty-stanzas
+                                     activate compile preactivate)
+  "Delete empty customization stanzas for faces."
+  (initsplit-remove-empty-stanza 'custom-set-faces))
+
 ;;
 ;; Where the hard work is done
 ;;
