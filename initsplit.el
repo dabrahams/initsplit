@@ -163,22 +163,21 @@ FILE element satisfies FILE-PRED"
 ;;
 ;; Protection against overwriting valuable customizations
 ;;
-(defun initsplit-writable-p (file)
-  "Return non-nil iff the file named by FILE has been
-loaded or does not exist"
+(defun initsplit-known-p (file)
+  "Return non-nil iff the file named by FILE has been loaded or
+does not exist"
   (or (not (file-exists-p file))
       (load-history-filename-element (load-history-regexp file))))
 
-(defun initsplit-writable-alist ()
+(defun initsplit-known-file-alist ()
   "Return the subset of `(initsplit-custom-alist)' that we
 can write safely (without lossage)"
-  (initsplit-customizations-subset 'initsplit-writable-p))
+  (initsplit-customizations-subset 'initsplit-known-p))
 
-(defun initsplit-non-writable-alist ()
+(defun initsplit-unknown-file-alist ()
   "Return the subset of `(initsplit-custom-alist)' that
-can't be safely written"
-  (set-difference
-   (initsplit-custom-alist) (initsplit-writable-alist) :test 'equal))
+might contain customizations we haven't seen yet."
+  (initsplit-customizations-subset '(lambda (x) (not (initsplit-known-p x)))))
 
 (defun initsplit-pre-customize ()
   "Give the user a chance to load not-yet-loaded customization files."
@@ -190,7 +189,7 @@ You can suppress this message by customizing \
 pre-load in `initsplit-customizations-alist'" f)
                    initsplit-load-before-customizing)) 
      'load
-     (mapcar 'initsplit-filename (initsplit-non-writable-alist))
+     (mapcar 'initsplit-filename (initsplit-unknown-file-alist))
      '("customization file" "customization files" "load")))
 
 (add-hook 'Custom-mode-hook 'initsplit-pre-customize)
@@ -260,7 +259,7 @@ multiple files per (initsplit-custom-alist)"
   (unwind-protect
 
       ;; For each customization file, save appropriate symbols
-      (dolist (s (initsplit-custom-alist))
+      (dolist (s (initsplit-known-file-alist))
 
         (let ((custom-file (file-truename (initsplit-filename s))))
 
@@ -334,7 +333,7 @@ multiple files per (initsplit-custom-alist)"
 
 ;; Ensure customization files marked pre-load have been loaded
 ;; already.
-(dolist (s (initsplit-non-writable-alist))
+(dolist (s (initsplit-unknown-file-alist))
   (when (and (initsplit-preload-p s)
              (file-exists-p (initsplit-filename s)))
     (load (initsplit-strip-lisp-suffix (cadr s)))))
