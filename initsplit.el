@@ -194,22 +194,6 @@ pre-load in `initsplit-customizations-alist'" f)
 
 (add-hook 'Custom-mode-hook 'initsplit-pre-customize)
 
-(when nil
-;;
-;; initsplit customization file versioning
-;;
-(defun initsplit-written-by-version ()
-  "Returns the version of initsplit that wrote customizations
-into the current buffer, or `\"1.0\"' for versions predating 1.7"
-  (or (bound-and-true-p initsplit-written-by-version) "1.0"))
-
-(put 'initsplit-written-by-version 'safe-local-variable 'stringp)
-
-(defadvice custom-save-faces (after initsplit-write-version
-                                    activate compile preactivate)
-  (add-file-local-variable-prop-line
-   'initsplit-written-by-version initsplit-version))
-)
 ;;
 ;; Remove empty stanzas after writing.  It would be nicer to not write
 ;; empty stanzas, but the current design of custom-save-variables and
