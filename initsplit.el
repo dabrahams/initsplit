@@ -110,15 +110,6 @@ specified with a non-absolute path"
   :group 'initsplit
   :type 'directory)
 
-
-(defcustom initsplit-load-before-customizing 'ask
-  "*Determines what is done with known customization files that
-haven't yet been loaded."
-  :group 'initsplit
-  :type '(choice (const :tag "Never" nil)
-		 (const :tag "Always" t)
-		 (const :tag "Ask" ask)))
-
 ;;; User Functions:
 
 ;;; Helper Functions:
@@ -179,20 +170,13 @@ can write safely (without lossage)"
 might contain customizations we haven't seen yet."
   (initsplit-customizations-subset '(lambda (x) (not (initsplit-known-p x)))))
 
-(defun initsplit-pre-customize ()
-  "Give the user a chance to load not-yet-loaded customization files."
-    (map-y-or-n-p 
-     (lambda (f) (if (eq initsplit-load-before-customizing 'ask)
-                     (format "Load %S before customizing (answer `y' if you'll be changing the settings stored there)?
-You can suppress this message by customizing \
-`initsplit-load-before-customizing' or by setting the file to \
-pre-load in `initsplit-customizations-alist'" f)
-                   initsplit-load-before-customizing)) 
-     'load
-     (mapcar 'initsplit-filename (initsplit-unknown-file-alist))
-     '("customization file" "customization files" "load")))
-
-(add-hook 'Custom-mode-hook 'initsplit-pre-customize)
+(defadvice custom-buffer-create-internal
+  (before initsplit-custom-buffer-create-internal (options &optional description) activate compile preactivate)
+  "Load up all relevant customization files before any customization starts"
+  (dolist (pat-file (initsplit-unknown-file-alist))
+    (let ((pattern (car pat-file)))
+      (when (assoc-if (lambda (symbol) (string-match pattern (symbol-name symbol))) options)
+        (load (initsplit-filename pat-file))))))
 
 ;;
 ;; Remove empty stanzas after writing.  It would be nicer to not write
