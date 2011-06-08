@@ -92,8 +92,10 @@ loaded at startup."
   :group 'initsplit)
 
 (defvar initsplit-dynamic-customizations-alist nil
-  "Alist that is appended to `initsplit-customizations-alist'
-when customizations are saved.  
+  "List of dynamic initsplit customizations that is appended to
+`initsplit-customizations-alist'.  Each element may be
+a (PATTERN, FILE) pair or a FUNCTION that is expected to return a
+list of (PATTERN, FILE) pairs.
 
 Used to programmatically add initsplit files that are not to be
 saved as part of the customization of
@@ -132,7 +134,10 @@ customization FILEs and the PATTERNs matching variable values
 they store, accounting for initsplit-customizations-alist,
 initsplit-dynamic-customizations-alist, and custom-file"
   (append initsplit-customizations-alist 
-          initsplit-dynamic-customizations-alist
+          (apply 'append ;; flatten
+                 (mapcar (lambda (e) ;; a sequence of lists to concatenate
+                           (if (functionp e) (funcall e) (list e)))
+                         initsplit-dynamic-customizations-alist))
           (when (initsplit-custom-file) `(("" ,(initsplit-custom-file))))))
 
 (defun initsplit-customizations-subset (file-pred)
