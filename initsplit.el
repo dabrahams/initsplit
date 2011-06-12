@@ -196,6 +196,12 @@ of the filename as with `load-library'."
       (when (assoc-if (lambda (symbol) (string-match pattern (symbol-name symbol))) options)
         (initsplit-load  pat-file)))))
 
+(defadvice customize-saved (before initsplit-load-all activate compile preactivate)
+  "Before attempting to customize all saved settings, let's make
+sure we've loaded all those settings"
+  (dolist (pat-file (initsplit-unknown-file-alist))
+    (initsplit-load pat-file)))
+
 ;;
 ;; Remove empty stanzas after writing.  It would be nicer to not write
 ;; empty stanzas, but the current design of custom-save-variables and
