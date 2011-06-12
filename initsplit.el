@@ -170,13 +170,21 @@ can write safely (without lossage)"
 might contain customizations we haven't seen yet."
   (initsplit-customizations-subset '(lambda (x) (not (initsplit-known-p x)))))
 
+(defun initsplit-load (filespec)
+  "If the file specified by (initsplit-custom-alist)' element
+FILESPEC exists, load it.  Preference will be given to variations
+of the filename as with `load-library'."
+  (load (initsplit-strip-lisp-suffix 
+         (initsplit-filename pat-file))
+        'ignore-non-existent-file))
+
 (defadvice custom-buffer-create-internal
   (before initsplit-custom-buffer-create-internal (options &optional description) activate compile preactivate)
   "Load up all relevant customization files before any customization starts"
   (dolist (pat-file (initsplit-unknown-file-alist))
     (let ((pattern (car pat-file)))
       (when (assoc-if (lambda (symbol) (string-match pattern (symbol-name symbol))) options)
-        (load (initsplit-filename pat-file))))))
+        (initsplit-load  pat-file)))))
 
 ;;
 ;; Remove empty stanzas after writing.  It would be nicer to not write
@@ -302,9 +310,8 @@ multiple files per (initsplit-custom-alist)"
 ;; Ensure customization files marked pre-load have been loaded
 ;; already.
 (dolist (s (initsplit-unknown-file-alist))
-  (when (and (initsplit-preload-p s)
-             (file-exists-p (initsplit-filename s)))
-    (load (initsplit-strip-lisp-suffix (cadr s)))))
+  (when (initsplit-preload-p s)
+    (initsplit-load s)))
   
 (run-hooks 'initsplit-load-hook)
 
