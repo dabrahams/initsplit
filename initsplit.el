@@ -192,18 +192,29 @@ of the filename as with `load-library'."
 ;; custom-save-faces doesn't really let us do that.
 ;;
 (defun initsplit-remove-empty-stanza (symbol)
-  "Find the first call to symbol, and if there are no arguments
-in this call, delete the call.
+  "If the call to SYMBOL just written by customize 
+has no arguments, delete it.
 
-This is used to remove empty custom-set-* stanzas."
+Used to remove empty custom-set-* stanzas."
   (save-excursion
-    (goto-char (point-min))
-    (search-forward (concat "(" (symbol-name symbol)))
-    (goto-char (match-beginning 0))
-    (let ((start (point))
-          (sexp (read (current-buffer))))
-      (when (= 1 (length sexp))
-          (custom-save-delete symbol)))))
+    ;; our custom-save-delete advice saved the position of the call as
+    ;; initsplit-stanza-position
+    (goto-char initsplit-stanza-position)
+    (unwind-protect
+        (let ((sexp (read (current-buffer))))
+          (assert (eq (car sexp) symbol))
+          (when (= 1 (length sexp))
+              (custom-save-delete symbol)))
+
+      ;; clean up marker we no longer need.
+      (set-marker initsplit-stanza-position nil))))
+
+(defadvice custom-save-delete (after initsplit-custom-save-set-markers
+                                        activate compile preactivate)
+  "Remember the position where custom is about to write its stanza"
+  (when (boundp (make-local-variable 'initsplit-stanza-position))
+    (set-marker initsplit-stanza-position nil)) 
+  (setq initsplit-stanza-position (point-marker)))
 
 (defadvice custom-save-variables (after no-empty-stanzas
                                         activate compile preactivate)
