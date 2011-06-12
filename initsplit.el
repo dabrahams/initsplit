@@ -59,6 +59,7 @@
 
 (require 'cl)
 (require 'find-func)
+(require 'simple) ;; for delete-blank-lines
 
 (defconst initsplit-version "1.7"
   "This version of initsplit.")
@@ -212,19 +213,41 @@ Used to remove empty custom-set-* stanzas."
 (defadvice custom-save-delete (after initsplit-custom-save-set-markers
                                         activate compile preactivate)
   "Remember the position where custom is about to write its stanza"
+  (delete-blank-lines)
   (when (boundp (make-local-variable 'initsplit-stanza-position))
     (set-marker initsplit-stanza-position nil)) 
   (setq initsplit-stanza-position (point-marker)))
 
-(defadvice custom-save-variables (after no-empty-stanzas
+(defadvice custom-save-variables (around no-empty-stanzas
                                         activate compile preactivate)
-  "Delete empty customization stanzas for variables."
+  "Delete empty customization stanzas for variables.  Also
+remember the state of the buffer before custom-save-variables was
+invoked so we can avoid writing it when there's been no real
+modification."
+
+  (set (make-local-variable 'initsplit-buffer-checksum) 
+       (unless (buffer-modified-p) (md5 (current-buffer))))
+
+  ad-do-it
+
   (initsplit-remove-empty-stanza 'custom-set-variables))
 
 (defadvice custom-save-faces (after no-empty-stanzas
                                      activate compile preactivate)
   "Delete empty customization stanzas for faces."
   (initsplit-remove-empty-stanza 'custom-set-faces))
+
+(defadvice save-buffer (before initsplit-correct-modified-p compile)
+  (if (and
+       (bound-and-true-p initsplit-buffer-checksum)
+       (string= initsplit-buffer-checksum (md5 (current-buffer))))
+      (set-buffer-modified-p nil)))
+
+(defun initsplit-enable-modified-p-correction (enable)
+  (funcall (if enable 'ad-enable-advice 'ad-disable-advice)
+           'save-buffer 'before 'initsplit-correct-modified-p)
+  (ad-activate 'save-buffer))
+
 
 ;;
 ;; Where the hard work is done
@@ -243,11 +266,12 @@ multiple files per (initsplit-custom-alist)"
             (put symbol 'initsplit-saved-face (get symbol 'saved-face)))
        (put symbol 'initsplit-saved-to nil))))
 
+  (initsplit-enable-modified-p-correction t)
+
   (unwind-protect
-
-      ;; For each customization file, save appropriate symbols
+      ;; For each customization file whose contents are known, save
+      ;; appropriate symbols
       (dolist (s (initsplit-known-file-alist))
-
         (let ((custom-file (file-truename (initsplit-filename s))))
 
           ;; As-yet-unsaved symbols that match the regexp
@@ -271,9 +295,16 @@ multiple files per (initsplit-custom-alist)"
                  (put symbol 'saved-value nil)
                  (put symbol 'saved-face nil)))))
            
-           ad-do-it))
+          ad-do-it))
 
-    ;; Cleanup: restore the saved-value properties
+    ;;;;;;;;;;;;;;;;;;;;;;;;;
+    ;; unwind-protect cleanup 
+    ;;;;;;;;;;;;;;;;;;;;;;;;;
+
+    ;; Remove save-buffer advice
+    (initsplit-enable-modified-p-correction nil)
+
+    ;; restore the saved-value properties
     (mapatoms 
      (lambda (symbol) 
        (put symbol 'saved-value (get symbol 'initsplit-saved-value))
