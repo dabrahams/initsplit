@@ -180,13 +180,21 @@ can write safely (without lossage)"
 might contain customizations we haven't seen yet."
   (initsplit-customizations-subset '(lambda (x) (not (initsplit-known-p x)))))
 
+(defun initsplit-load-if-exists (file)
+  "Load the given file if it exists."
+  (load file 'ignore-non-existent-file))
+
+(defvar initsplit-load-function 'initsplit-load-if-exists
+  "The function that's actually used by initsplit to load
+customization files before their customizations are operated on.")
+
 (defun initsplit-load (filespec)
   "If the file specified by (initsplit-custom-alist)' element
 FILESPEC exists, load it.  Preference will be given to variations
 of the filename as with `load-library'."
-  (load (initsplit-strip-lisp-suffix 
-         (initsplit-filename filespec))
-        'ignore-non-existent-file))
+  (funcall initsplit-load-function
+           (initsplit-strip-lisp-suffix 
+            (initsplit-filename filespec))))
 
 (defadvice custom-buffer-create-internal
   (before initsplit-custom-buffer-create-internal (options &optional description) activate compile preactivate)
