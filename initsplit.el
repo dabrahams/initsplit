@@ -185,7 +185,7 @@ might contain customizations we haven't seen yet."
 FILESPEC exists, load it.  Preference will be given to variations
 of the filename as with `load-library'."
   (load (initsplit-strip-lisp-suffix 
-         (initsplit-filename pat-file))
+         (initsplit-filename filespec))
         'ignore-non-existent-file))
 
 (defadvice custom-buffer-create-internal
