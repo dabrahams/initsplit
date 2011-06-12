@@ -111,6 +111,15 @@ specified with a non-absolute path"
   :group 'initsplit
   :type 'directory)
 
+(defcustom initsplit-pretty-print
+  nil
+  "If t, initsplit will write reformat customizations with
+`indent-pp-sexp'.  Especially useful if you keep your
+customizations in version control, as it tends to result in diffs
+that cover only the actual changes." 
+  :group 'initsplit
+  :type 'boolean)
+
 ;;; User Functions:
 
 ;;; Helper Functions:
@@ -204,8 +213,11 @@ Used to remove empty custom-set-* stanzas."
     (unwind-protect
         (let ((sexp (read (current-buffer))))
           (assert (eq (car sexp) symbol))
-          (when (= 1 (length sexp))
-              (custom-save-delete symbol)))
+          (if (= 1 (length sexp))
+              (custom-save-delete symbol)
+            (when initsplit-pretty-print
+              (goto-char initsplit-stanza-position)
+              (indent-pp-sexp t))))
 
       ;; clean up marker we no longer need.
       (set-marker initsplit-stanza-position nil))))
