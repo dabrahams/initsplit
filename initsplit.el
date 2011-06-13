@@ -152,14 +152,13 @@ FILE element satisfies FILE-PRED"
   (cadddr filespec))
 
 (defun initsplit-filename (filespec)
-  "Return the absolute path to the file associated with the
+  "Return the truename of the file associated with the
 `(initsplit-custom-alist)' element FILESPEC"
   (let* ((file (cadr filespec))
          (default-directory initsplit-default-directory)
          (load-path (cons default-directory load-path)))
-    (condition-case nil
-        (find-library-name file)
-        (error (file-truename file)))))
+    (file-truename
+     (or (ignore-errors (find-library-name file)) file))))
 
 ;;
 ;; Protection against overwriting valuable customizations
