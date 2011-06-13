@@ -196,13 +196,24 @@ of the filename as with `load-library'."
            (initsplit-strip-lisp-suffix 
             (initsplit-filename filespec))))
 
+(defun initsplit-find-option-match (pattern options)
+  "Where OPTIONS are an alist as accepted by
+`custom-buffer-create', return nil unless they specify
+customization of a symbol whose name matches PATTERN."
+  (find-if 
+   (lambda (option)
+     (if (eq (cadr option) 'custom-group)
+         (initsplit-find-option-match pattern (custom-group-members (car option) nil))
+       (string-match pattern (symbol-name (car option)))))
+   options))
+  
 (defadvice custom-buffer-create-internal
   (before initsplit-custom-buffer-create-internal (options &optional description) activate compile preactivate)
   "Load up all relevant customization files before any customization starts"
-  (dolist (pat-file (initsplit-unknown-file-alist))
-    (let ((pattern (car pat-file)))
-      (when (assoc-if (lambda (symbol) (string-match pattern (symbol-name symbol))) options)
-        (initsplit-load  pat-file)))))
+  (dolist (filespec (initsplit-unknown-file-alist))
+    (when (and (not (initsplit-known-p (cadr filespec)))
+               (initsplit-find-option-match (car filespec) options))
+      (initsplit-load  filespec))))
 
 (defadvice customize-saved (before initsplit-load-all activate compile preactivate)
   "Before attempting to customize all saved settings, let's make
