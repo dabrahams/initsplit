@@ -134,12 +134,34 @@ that cover only the actual changes."
 customization FILEs and the PATTERNs matching variable values
 they store, accounting for initsplit-customizations-alist,
 initsplit-dynamic-customizations-alist, and custom-file"
-  (append initsplit-customizations-alist 
-          (apply 'append ;; flatten
-                 (mapcar (lambda (e) ;; a sequence of lists to concatenate
-                           (if (functionp e) (funcall e) (list e)))
-                         initsplit-dynamic-customizations-alist))
-          (when (initsplit-custom-file) `(("" ,(initsplit-custom-file))))))
+  (let* ((dynamic-lists
+          (mapcar (lambda (e) ;; a sequence of lists to concatenate
+                    (if (functionp e) (funcall e) (list e)))
+                  initsplit-dynamic-customizations-alist))
+         (unmerged
+          (append initsplit-customizations-alist 
+                  (apply 'append dynamic-lists) ;; flattened
+                  (when (initsplit-custom-file) 
+                    `(("" ,(initsplit-custom-file))))))
+         (index (make-hash-table :test 'equal))
+         result)
+         
+    (dolist (s unmerged)
+      (let* ((f (initsplit-filename s))
+             (match (gethash f index)))
+        (if match
+            (progn
+              ;; merge the patterns in-place
+              (setcar match (concat (car match) "\\|" (car s)))
+              ;; "or" the flags together
+              (setcdr (cdr match)
+                      `(,(or (caddr s) (caddr match))
+                        ,(or (cadddr s) (cadddr match)))))
+
+          ;; else build a new element to add to the result
+          (push (cons (car s) (cons f (cddr s))) result)
+          (puthash f (car result) index))))
+    (nreverse result)))
 
 (defun initsplit-customizations-subset (file-pred)
   "Return the subset of `(initsplit-custom-alist)' whose
