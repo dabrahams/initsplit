@@ -284,7 +284,9 @@ invoked so we can avoid writing it when there's been no real
 modification."
 
   (set (make-local-variable 'initsplit-buffer-checksum) 
-       (unless (buffer-modified-p) (md5 (current-buffer))))
+       (unless (buffer-modified-p) 
+         (add-hook 'write-file-functions 'initsplit-buffer-unmodified-p)
+         (md5 (current-buffer))))
 
   ad-do-it
 
@@ -295,17 +297,15 @@ modification."
   "Delete empty customization stanzas for faces."
   (initsplit-remove-empty-stanza 'custom-set-faces))
 
-(defadvice save-buffer (before initsplit-correct-modified-p compile)
-  (if (and
+(defun initsplit-buffer-unmodified-p ()
+  "A hook for `write-file-functions' that avoids saving over
+settings files whose contents wouldn't change."
+  (when
+      (and
        (bound-and-true-p initsplit-buffer-checksum)
        (string= initsplit-buffer-checksum (md5 (current-buffer))))
-      (set-buffer-modified-p nil)))
-
-(defun initsplit-enable-modified-p-correction (enable)
-  (funcall (if enable 'ad-enable-advice 'ad-disable-advice)
-           'save-buffer 'before 'initsplit-correct-modified-p)
-  (ad-activate 'save-buffer))
-
+    (set-buffer-modified-p nil)
+    t))
 
 ;;
 ;; Where the hard work is done
@@ -323,8 +323,6 @@ multiple files per (initsplit-custom-alist)"
             (put symbol 'initsplit-saved-value (get symbol 'saved-value))
             (put symbol 'initsplit-saved-face (get symbol 'saved-face)))
        (put symbol 'initsplit-saved-to nil))))
-
-  (initsplit-enable-modified-p-correction t)
 
   (unwind-protect
       ;; For each customization file whose contents are known, save
@@ -358,11 +356,6 @@ multiple files per (initsplit-custom-alist)"
     ;;;;;;;;;;;;;;;;;;;;;;;;;
     ;; unwind-protect cleanup 
     ;;;;;;;;;;;;;;;;;;;;;;;;;
-
-    ;; Remove save-buffer advice
-    (initsplit-enable-modified-p-correction nil)
-
-    ;; restore the saved-value properties
     (mapatoms 
      (lambda (symbol) 
        (put symbol 'saved-value (get symbol 'initsplit-saved-value))
