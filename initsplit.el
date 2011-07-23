@@ -271,7 +271,6 @@ Used to remove empty custom-set-* stanzas."
 (defadvice custom-save-delete (after initsplit-custom-save-set-markers
                                         activate compile preactivate)
   "Remember the position where custom is about to write its stanza"
-  (delete-blank-lines)
   (when (boundp (make-local-variable 'initsplit-stanza-position))
     (set-marker initsplit-stanza-position nil)) 
   (setq initsplit-stanza-position (point-marker)))
