@@ -260,7 +260,9 @@ Used to remove empty custom-set-* stanzas."
         (let ((sexp (read (current-buffer))))
           (assert (eq (car sexp) symbol))
           (if (= 1 (length sexp))
-              (custom-save-delete symbol)
+              (progn
+                (custom-save-delete symbol)
+                (delete-blank-lines))
             (when initsplit-pretty-print
               (goto-char initsplit-stanza-position)
               (indent-pp-sexp t))))
