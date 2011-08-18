@@ -57,7 +57,7 @@
 
 ;;; Code:
 
-(require 'cl)
+(eval-when-compile (require 'cl))
 (require 'find-func)
 (require 'simple) ;; for delete-blank-lines
 
@@ -125,9 +125,10 @@ that cover only the actual changes."
 ;;; Helper Functions:
 
 (defun initsplit-filter (list pred)
-  "Return the subset of LIST that satisfies PRED"  
-  (reduce (lambda (elt lst) (if (funcall pred elt) (cons elt lst) lst))
-          list :from-end t :initial-value nil))
+  "Return the subset of LIST that satisfies PRED"
+  (delete nil
+          (mapcar (lambda (elt)
+                    (and (funcall pred elt) elt)) list)))
 
 (defun initsplit-custom-alist ()
   "Return an alist of (PATTERN, FILE) pairs containing all
@@ -221,13 +222,16 @@ of the filename as with `load-library'."
   "Where OPTIONS are an alist as accepted by
 `custom-buffer-create', return nil unless they specify
 customization of a symbol whose name matches PATTERN."
-  (find-if 
-   (lambda (option)
-     (if (eq (cadr option) 'custom-group)
-         (initsplit-find-option-match pattern (custom-group-members (car option) nil))
-       (string-match pattern (symbol-name (car option)))))
-   options))
-  
+  (catch 'found
+    (mapc
+     (lambda (option)
+       (if (if (eq (cadr option) 'custom-group)
+               (initsplit-find-option-match
+                pattern (custom-group-members (car option) nil))
+             (string-match pattern (symbol-name (car option))))
+           (throw 'found option)))
+     options)))
+
 (defadvice custom-buffer-create-internal
   (before initsplit-custom-buffer-create-internal (options &optional description) activate compile preactivate)
   "Load up all relevant customization files before any customization starts"
