@@ -209,6 +209,9 @@ might contain customizations we haven't seen yet."
 (defvar initsplit-load-function 'initsplit-load-if-exists
   "The function that's actually used by initsplit to load
 customization files before their customizations are operated on.")
+(eval-when-compile
+  (defvar initsplit-stanza-position nil)
+  (defvar initsplit-buffer-checksum nil))
 
 (defun initsplit-load (filespec)
   "If the file specified by (initsplit-custom-alist)' element
