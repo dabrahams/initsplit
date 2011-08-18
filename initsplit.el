@@ -60,6 +60,7 @@
 (require 'cl)
 (require 'find-func)
 (require 'simple) ;; for delete-blank-lines
+(require 'cus-edit)
 
 (defconst initsplit-version "1.7"
   "This version of initsplit.")
