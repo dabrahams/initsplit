@@ -60,6 +60,7 @@
 (require 'cl)
 (require 'find-func)
 (require 'simple) ;; for delete-blank-lines
+(require 'cus-edit)
 
 (defconst initsplit-version "1.7"
   "This version of initsplit.")
@@ -86,10 +87,10 @@ not byte-compile FILE.
 If PRE-LOAD is nil, initsplit will not try to ensure FILE is
 loaded at startup."
   :type '(repeat
-	  (list (regexp  :tag "Var regexp")
-		(file    :tag "Custom file")
-		(boolean :tag "Byte-compile")
-		(boolean :tag "Pre-load" :value t)))
+          (list (regexp  :tag "Var regexp")
+                (file    :tag "Custom file")
+                (boolean :tag "Byte-compile")
+                (boolean :tag "Pre-load" :value t)))
   :group 'initsplit)
 
 (defvar initsplit-dynamic-customizations-alist nil
@@ -116,7 +117,7 @@ specified with a non-absolute path"
   "If t, initsplit will write reformat customizations with
 `indent-pp-sexp'.  Especially useful if you keep your
 customizations in version control, as it tends to result in diffs
-that cover only the actual changes." 
+that cover only the actual changes."
   :group 'initsplit
   :type 'boolean)
 
@@ -139,13 +140,13 @@ initsplit-dynamic-customizations-alist, and custom-file"
                     (if (functionp e) (funcall e) (list e)))
                   initsplit-dynamic-customizations-alist))
          (unmerged
-          (append initsplit-customizations-alist 
+          (append initsplit-customizations-alist
                   (apply 'append dynamic-lists) ;; flattened
-                  (when (initsplit-custom-file) 
+                  (when (initsplit-custom-file)
                     `(("" ,(initsplit-custom-file))))))
          (index (make-hash-table :test 'equal))
          result)
-         
+
     (dolist (s unmerged)
       (let* ((f (initsplit-filename s))
              (match (gethash f index)))
@@ -208,13 +209,16 @@ might contain customizations we haven't seen yet."
 (defvar initsplit-load-function 'initsplit-load-if-exists
   "The function that's actually used by initsplit to load
 customization files before their customizations are operated on.")
+(eval-when-compile
+  (defvar initsplit-stanza-position nil)
+  (defvar initsplit-buffer-checksum nil))
 
 (defun initsplit-load (filespec)
   "If the file specified by (initsplit-custom-alist)' element
 FILESPEC exists, load it.  Preference will be given to variations
 of the filename as with `load-library'."
   (funcall initsplit-load-function
-           (initsplit-strip-lisp-suffix 
+           (initsplit-strip-lisp-suffix
             (initsplit-filename filespec))))
 
 (defun initsplit-find-option-match (pattern options)
@@ -229,14 +233,16 @@ customization of a symbol whose name matches PATTERN."
    options))
   
 (defadvice custom-buffer-create-internal
-  (before initsplit-custom-buffer-create-internal (options &optional description) activate compile preactivate)
+  (before initsplit-custom-buffer-create-internal
+          (options &optional description) activate compile preactivate)
   "Load up all relevant customization files before any customization starts"
   (dolist (filespec (initsplit-unknown-file-alist))
     (when (and (not (initsplit-known-p (cadr filespec)))
                (initsplit-find-option-match (car filespec) options))
-      (initsplit-load  filespec))))
+      (initsplit-load filespec))))
 
-(defadvice customize-saved (before initsplit-load-all activate compile preactivate)
+(defadvice customize-saved (before initsplit-load-all
+                                   activate compile preactivate)
   "Before attempting to customize all saved settings, let's make
 sure we've loaded all those settings"
   (dolist (pat-file (initsplit-unknown-file-alist))
@@ -248,7 +254,7 @@ sure we've loaded all those settings"
 ;; custom-save-faces doesn't really let us do that.
 ;;
 (defun initsplit-remove-empty-stanza (symbol)
-  "If the call to SYMBOL just written by customize 
+  "If the call to SYMBOL just written by customize
 has no arguments, delete it.
 
 Used to remove empty custom-set-* stanzas."
@@ -274,7 +280,7 @@ Used to remove empty custom-set-* stanzas."
                                         activate compile preactivate)
   "Remember the position where custom is about to write its stanza"
   (when (boundp (make-local-variable 'initsplit-stanza-position))
-    (set-marker initsplit-stanza-position nil)) 
+    (set-marker initsplit-stanza-position nil))
   (setq initsplit-stanza-position (point-marker)))
 
 (defadvice custom-save-variables (around no-empty-stanzas
@@ -284,7 +290,7 @@ remember the state of the buffer before custom-save-variables was
 invoked so we can avoid writing it when there's been no real
 modification."
 
-  (set (make-local-variable 'initsplit-buffer-checksum) 
+  (set (make-local-variable 'initsplit-buffer-checksum)
        (unless (buffer-modified-p) (md5 (current-buffer))))
 
   ad-do-it
@@ -311,15 +317,15 @@ modification."
 ;;
 ;; Where the hard work is done
 ;;
-(defadvice custom-save-all (around initsplit-custom-save-all 
+(defadvice custom-save-all (around initsplit-custom-save-all
                                    activate compile preactivate)
   "Wrapper over custom-save-all that saves customizations into
 multiple files per (initsplit-custom-alist)"
 
   ;; Store up the saved-value/face properties of all symbols
   ;; and remember that we haven't saved them yet
-  (mapatoms 
-   (lambda (symbol) 
+  (mapatoms
+   (lambda (symbol)
      (when (or
             (put symbol 'initsplit-saved-value (get symbol 'saved-value))
             (put symbol 'initsplit-saved-face (get symbol 'saved-face)))
@@ -335,37 +341,39 @@ multiple files per (initsplit-custom-alist)"
 
           ;; As-yet-unsaved symbols that match the regexp
           ;; get a saved-value/face property.  Others get nil.
-          (mapatoms 
+          (mapatoms
 
            (lambda (symbol)
              (let* ((saved-to (get symbol 'initsplit-saved-to))
 
-                    (save-here 
+                    (save-here
                      (if (null saved-to)
                          (string-match (car s) (symbol-name symbol))
                        (string= custom-file saved-to))))
 
                (if save-here
                    (progn ; let custom have its way
-                     (put symbol 'saved-value (get symbol 'initsplit-saved-value))
-                     (put symbol 'saved-face (get symbol 'initsplit-saved-face))
+                     (put symbol 'saved-value
+                          (get symbol 'initsplit-saved-value))
+                     (put symbol 'saved-face
+                          (get symbol 'initsplit-saved-face))
                      (put symbol 'initsplit-saved-to custom-file))
                  ; else, let custom think it hasn't been changed.
                  (put symbol 'saved-value nil)
                  (put symbol 'saved-face nil)))))
-           
+
           ad-do-it))
 
     ;;;;;;;;;;;;;;;;;;;;;;;;;
-    ;; unwind-protect cleanup 
+    ;; unwind-protect cleanup
     ;;;;;;;;;;;;;;;;;;;;;;;;;
 
     ;; Remove save-buffer advice
     (initsplit-enable-modified-p-correction nil)
 
     ;; restore the saved-value properties
-    (mapatoms 
-     (lambda (symbol) 
+    (mapatoms
+     (lambda (symbol)
        (put symbol 'saved-value (get symbol 'initsplit-saved-value))
        (put symbol 'saved-face (get symbol 'initsplit-saved-face))
        (put symbol 'initsplit-saved-value nil)
@@ -391,10 +399,10 @@ multiple files per (initsplit-custom-alist)"
       (initsplit-byte-compile-current)
     (let ((cal (initsplit-custom-alist)))
       (while cal
-	(if (and (nth 2 (car cal))
-		 (initsplit-in-file-p (nth 1 (car cal))))
-	    (initsplit-byte-compile-current))
-	(setq cal (cdr cal))))))
+        (if (and (nth 2 (car cal))
+                 (initsplit-in-file-p (nth 1 (car cal))))
+            (initsplit-byte-compile-current))
+        (setq cal (cdr cal))))))
 
 ;; (add-hook 'after-save-hook 'initsplit-byte-compile-files t)
 
@@ -413,7 +421,7 @@ multiple files per (initsplit-custom-alist)"
 (dolist (s (initsplit-unknown-file-alist))
   (when (initsplit-preload-p s)
     (initsplit-load s)))
-  
+
 (run-hooks 'initsplit-load-hook)
 
 ;;; initsplit.el ends here
