@@ -1,4 +1,4 @@
-;;; initsplit --- code to split customizations into different files
+;;; initsplit.el --- code to split customizations into different files
 
 ;; Copyright (C) 2000, 2001 John Wiegley
 ;; Copyright (C) 2010, 2011 Dave Abrahams
