@@ -280,7 +280,8 @@ Used to remove empty custom-set-* stanzas."
                                         activate compile preactivate)
   "Remember the position where custom is about to write its stanza"
   (when (boundp (make-local-variable 'initsplit-stanza-position))
-    (set-marker initsplit-stanza-position nil))
+    (when (markerp initsplit-stanza-position)
+      (set-marker initsplit-stanza-position nil)))
   (setq initsplit-stanza-position (point-marker)))
 
 (defadvice custom-save-variables (around no-empty-stanzas
