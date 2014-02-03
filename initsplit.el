@@ -338,7 +338,8 @@ multiple files per (initsplit-custom-alist)"
       ;; For each customization file whose contents are known, save
       ;; appropriate symbols
       (dolist (s (initsplit-known-file-alist))
-        (let ((custom-file (file-truename (initsplit-filename s))))
+        (let ((custom-file (file-truename (initsplit-filename s)))
+              (auto-insert nil))
 
           ;; As-yet-unsaved symbols that match the regexp
           ;; get a saved-value/face property.  Others get nil.
