@@ -1,4 +1,4 @@
-;;; initsplit --- code to split customizations into different files
+;;; initsplit.el --- code to split customizations into different files
 
 ;; Copyright (C) 2000, 2001 John Wiegley
 ;; Copyright (C) 2010, 2011 Dave Abrahams
@@ -221,17 +221,22 @@ of the filename as with `load-library'."
            (initsplit-strip-lisp-suffix
             (initsplit-filename filespec))))
 
-(defun initsplit-find-option-match (pattern options)
+(defun initsplit-find-option-match (pattern options &optional visited)
   "Where OPTIONS are an alist as accepted by
 `custom-buffer-create', return nil unless they specify
-customization of a symbol whose name matches PATTERN."
+customization of a symbol whose name matches PATTERN.  The
+optional VISITED parameter is for internal use only and should
+always be nil when this function is not called recursively."
   (find-if 
    (lambda (option)
-     (if (eq (cadr option) 'custom-group)
-         (initsplit-find-option-match pattern (custom-group-members (car option) nil))
-       (string-match pattern (symbol-name (car option)))))
+     (let ((x (car option)))
+       (if (eq (cadr option) 'custom-group)
+           (if (memq x visited)
+               (message "group cycle: %s" visited)
+             (initsplit-find-option-match pattern (custom-group-members x nil) (cons x visited)))
+         (string-match pattern (symbol-name x)))))
    options))
-  
+
 (defadvice custom-buffer-create-internal
   (before initsplit-custom-buffer-create-internal
           (options &optional description) activate compile preactivate)
@@ -280,7 +285,8 @@ Used to remove empty custom-set-* stanzas."
                                         activate compile preactivate)
   "Remember the position where custom is about to write its stanza"
   (when (boundp (make-local-variable 'initsplit-stanza-position))
-    (set-marker initsplit-stanza-position nil))
+    (when (markerp initsplit-stanza-position)
+      (set-marker initsplit-stanza-position nil)))
   (setq initsplit-stanza-position (point-marker)))
 
 (defadvice custom-save-variables (around no-empty-stanzas
@@ -337,7 +343,8 @@ multiple files per (initsplit-custom-alist)"
       ;; For each customization file whose contents are known, save
       ;; appropriate symbols
       (dolist (s (initsplit-known-file-alist))
-        (let ((custom-file (file-truename (initsplit-filename s))))
+        (let ((custom-file (file-truename (initsplit-filename s)))
+              (auto-insert nil))
 
           ;; As-yet-unsaved symbols that match the regexp
           ;; get a saved-value/face property.  Others get nil.
