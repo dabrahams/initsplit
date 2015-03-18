@@ -57,7 +57,7 @@
 
 ;;; Code:
 
-(require 'cl)
+(eval-when-compile (require 'cl))
 (require 'find-func)
 (require 'simple) ;; for delete-blank-lines
 (require 'cus-edit)
