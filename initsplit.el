@@ -57,7 +57,7 @@
 
 ;;; Code:
 
-(require 'cl)
+(eval-when-compile (require 'cl))
 (require 'find-func)
 (require 'simple) ;; for delete-blank-lines
 (require 'cus-edit)
@@ -126,7 +126,7 @@ that cover only the actual changes."
 ;;; Helper Functions:
 
 (defun initsplit-filter (list pred)
-  "Return the subset of LIST that satisfies PRED"  
+  "Return the subset of LIST that satisfies PRED"
   (reduce (lambda (elt lst) (if (funcall pred elt) (cons elt lst) lst))
           list :from-end t :initial-value nil))
 
@@ -227,7 +227,7 @@ of the filename as with `load-library'."
 customization of a symbol whose name matches PATTERN.  The
 optional VISITED parameter is for internal use only and should
 always be nil when this function is not called recursively."
-  (find-if 
+  (find-if
    (lambda (option)
      (let ((x (car option)))
        (if (eq (cadr option) 'custom-group)
