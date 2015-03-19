@@ -6,7 +6,8 @@
 
 ;; Author: John Wiegley <johnw@gnu.org>, Dave Abrahams <dave@boostpro.com>
 ;; Created:  8 Feb 2000
-;; Version: 1.6
+;; Updated:  18 Mar 2015
+;; Version: 1.8
 ;; Keywords: lisp
 ;; X-URL: http://www.gci-net.com/users/j/johnw/emacs.html
 
@@ -57,12 +58,12 @@
 
 ;;; Code:
 
-(eval-when-compile (require 'cl))
+(require 'cl-lib)
 (require 'find-func)
 (require 'simple) ;; for delete-blank-lines
 (require 'cus-edit)
 
-(defconst initsplit-version "1.7"
+(defconst initsplit-version "1.8"
   "This version of initsplit.")
 
 (defgroup initsplit nil
@@ -127,8 +128,8 @@ that cover only the actual changes."
 
 (defun initsplit-filter (list pred)
   "Return the subset of LIST that satisfies PRED"
-  (reduce (lambda (elt lst) (if (funcall pred elt) (cons elt lst) lst))
-          list :from-end t :initial-value nil))
+  (cl-reduce (lambda (elt lst) (if (funcall pred elt) (cons elt lst) lst))
+             list :from-end t :initial-value nil))
 
 (defun initsplit-custom-alist ()
   "Return an alist of (PATTERN, FILE) pairs containing all
