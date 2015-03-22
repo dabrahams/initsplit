@@ -58,6 +58,8 @@
 
 ;;; Code:
 
+(eval-when-compile
+  (require 'cl))
 (require 'cl-lib)
 (require 'find-func)
 (require 'simple) ;; for delete-blank-lines
