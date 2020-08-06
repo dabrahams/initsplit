@@ -229,7 +229,7 @@ of the filename as with `load-library'."
 customization of a symbol whose name matches PATTERN.  The
 optional VISITED parameter is for internal use only and should
 always be nil when this function is not called recursively."
-  (find-if
+  (cl-find-if
    (lambda (option)
      (let ((x (car option)))
        (if (eq (cadr option) 'custom-group)
