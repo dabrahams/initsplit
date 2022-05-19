@@ -10,6 +10,7 @@
 ;; Version: 1.8
 ;; Keywords: lisp
 ;; X-URL: https://github.com/dabrahams/initsplit/network
+;; Requires Emacs version: 24.3
 
 ;; This program is free software; you can redistribute it and/or
 ;; modify it under the terms of the GNU General Public License as
@@ -58,8 +59,6 @@
 
 ;;; Code:
 
-(eval-when-compile
-  (require 'cl))
 (require 'cl-lib)
 (require 'find-func)
 (require 'simple) ;; for delete-blank-lines
@@ -229,7 +228,7 @@ of the filename as with `load-library'."
 customization of a symbol whose name matches PATTERN.  The
 optional VISITED parameter is for internal use only and should
 always be nil when this function is not called recursively."
-  (find-if
+  (cl-find-if
    (lambda (option)
      (let ((x (car option)))
        (if (eq (cadr option) 'custom-group)
