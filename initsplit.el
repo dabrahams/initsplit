@@ -9,7 +9,7 @@
 ;; Updated:  18 Mar 2015
 ;; Version: 1.8
 ;; Keywords: lisp
-;; X-URL: http://www.gci-net.com/users/j/johnw/emacs.html
+;; X-URL: https://github.com/dabrahams/initsplit/network
 
 ;; This program is free software; you can redistribute it and/or
 ;; modify it under the terms of the GNU General Public License as
